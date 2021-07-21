@@ -1,0 +1,12 @@
+#!/bin/bash
+
+CXX=gcc
+
+#test linalg library. Comment out when you dont want to test.
+#$CXX linalg_test.c -o linalg_test
+#./linalg_test > linalg_test_results.txt
+
+#$CXX src/main.c -L./. -l:chipmunk_lib.a -lm -ldl -o exe -g -Iinclude_chipmunk -Iinclude -I/usr/local/include/SDL2 -Bstatic -lSDL2 -Wall -pthread external.o -Lchipmunk_lib 2> errors.err
+
+make 2> errors.err
+
