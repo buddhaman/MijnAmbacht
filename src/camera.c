@@ -4,7 +4,7 @@ internal inline void
 UpdateCameraInput(Camera *camera, AppState *appState)
 {
     r32 factor = 0.01;
-    r32 speed = 0.12;
+    r32 speed = 0.24;
     Vec3 dir = camera->direction;
     Vec3 perp = v3_norm(v3_cross(dir, vec3(0,0,1)));
     camera->theta-=appState->dx*factor;

@@ -103,3 +103,10 @@ BeginShaderInstance(ShaderInstance *shaderInstance)
             (GLfloat *)shaderInstance->modelMatrix);
 }
 
+void
+UpdateModelMatrix(ShaderInstance *shaderInstance)
+{
+    glUniformMatrix4fv(shaderInstance->modelMatrixLocation, 1, 0, 
+            (GLfloat *)shaderInstance->modelMatrix);
+}
+

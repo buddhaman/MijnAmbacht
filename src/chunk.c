@@ -12,14 +12,16 @@ iv3_add(IVec3 a, IVec3 b)
 }
 
 internal inline void
-PushIndexToChunkMesh(ChunkMesh *mesh, ui16 index)
+PushIndexToChunkMesh(ChunkMesh *mesh, ui32 index)
 {
+    Assert(mesh->nIndices < mesh->maxIndices);
     mesh->indexBuffer[mesh->nIndices++] = index;
 }
 
 internal inline void
 PushVertexToChunkMesh(ChunkMesh *mesh, IVec3 p, i16 xn, i16 yn, i16 zn)
 {
+    Assert(mesh->nVertices < mesh->maxVertices);
     ui32 idx = mesh->nVertices*mesh->stride;
     mesh->vertexBuffer[idx] = p.x;
     mesh->vertexBuffer[idx+1] = p.y;
@@ -47,7 +49,7 @@ PushTriangleToChunkMesh(ChunkMesh *mesh, IVec3 p0, IVec3 p1, IVec3 p2)
 internal inline void
 PushQuadToChunkMesh(ChunkMesh *mesh, IVec3 p0, IVec3 p1, IVec3 p2, IVec3 p3, i16 xn, i16 yn, i16 zn)
 {
-    ui16 fromIdx = mesh->nVertices;
+    ui32 fromIdx = mesh->nVertices;
 
     PushVertexToChunkMesh(mesh, p0, xn, yn, zn);
     PushVertexToChunkMesh(mesh, p1, xn, yn, zn);
@@ -112,7 +114,6 @@ PushCubeToChunkMesh(ChunkMesh *mesh, IVec3 pos, IVec3 dims)
             p110,
             p010,
             0, CHUNK_UNIT, 0);
-
 }
 
 void
@@ -129,7 +130,7 @@ BufferChunkMesh(ChunkMesh *mesh)
             usage);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh->ebo);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, 
-            mesh->nIndices*sizeof(ui16),
+            mesh->nIndices*sizeof(ui32),
             mesh->indexBuffer,
             usage);
 }
@@ -138,7 +139,7 @@ void
 RenderChunkMesh(ChunkMesh *mesh)
 {
     glBindVertexArray(mesh->vao);
-    glDrawElements(GL_TRIANGLES, mesh->nIndices, GL_UNSIGNED_SHORT, 0);
+    glDrawElements(GL_TRIANGLES, mesh->nIndices, GL_UNSIGNED_INT, 0);
 }
 
 void
@@ -147,8 +148,10 @@ AllocateChunkMesh(MemoryArena *arena, ChunkMesh *mesh)
     *mesh = (ChunkMesh){};
 
     mesh->stride = 6;
-    mesh->vertexBuffer = PushArray(arena, ui16, 256*256*mesh->stride);
-    mesh->indexBuffer = PushArray(arena, ui16, 256*256);
+    mesh->maxVertices = 256U*256U*24U;
+    mesh->maxIndices = 256U*256U*36U;
+    mesh->vertexBuffer = PushArray(arena, ui16, ((size_t)mesh->maxVertices)*((size_t)mesh->stride));
+    mesh->indexBuffer = PushArray(arena, ui32, mesh->maxIndices);
 
     glGenVertexArrays(1, &mesh->vao);
     glGenBuffers(1, &mesh->vbo);

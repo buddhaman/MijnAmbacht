@@ -77,6 +77,7 @@ TimLoadImage(char *path)
 #include "app_state.h"
 #include "chunk.h"
 #include "camera.h"
+#include "world.h"
 
 #include "cool_memory.c"
 #include "tim_math.c"
@@ -84,6 +85,7 @@ TimLoadImage(char *path)
 #include "app_state.c"
 #include "chunk.c"
 #include "camera.c"
+#include "world.c"
 
 #define FRAMES_PER_SECOND 60
 
@@ -142,7 +144,7 @@ main(int argc, char**argv)
     nk_style_set_font(ctx, &font->handle);
 
     // MemoryArena
-    MemoryArena *gameArena = CreateMemoryArena(128*1000*1000);
+    MemoryArena *gameArena = CreateMemoryArena(512L*1000L*1000L);
     // Creating appstate
     AppState *appState = (AppState *)malloc(sizeof(AppState));
     *appState = (AppState){};
@@ -170,24 +172,8 @@ main(int argc, char**argv)
     InitCamera(camera);
     camera->pos = vec3(1, 1, 3);
 
-    ChunkMesh *chunkMesh = PushStruct(gameArena, ChunkMesh);
-    AllocateChunkMesh(gameArena, chunkMesh);
-
-    Chunk *chunk = PushStruct(gameArena, Chunk);
-    *chunk = (Chunk){};
-    for(ui16 y = 0; y < CHUNK_SIZE; y++)
-    for(ui16 x = 0; x < CHUNK_SIZE; x++)
-    {
-        ui32 depth = RandomUI32(0U, 16U);
-        for(ui16 z = 0; z < depth; z++)
-        {
-            chunk->blocks[x][y][z] = 1;
-            PushCubeToChunkMesh(chunkMesh, ivec3(CHUNK_UNIT*x,CHUNK_UNIT*y,CHUNK_UNIT*z), 
-                    ivec3(CHUNK_UNIT, CHUNK_UNIT, CHUNK_UNIT));
-        }
-    }
-
-    BufferChunkMesh(chunkMesh);
+    World *world = PushStruct(gameArena, World);
+    InitWorld(gameArena, world);
 
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
@@ -287,10 +273,13 @@ main(int argc, char**argv)
         // Anti aliasing in opengl.
         glEnable(GL_MULTISAMPLE);
 
+        SDL_SetRelativeMouseMode(SDL_TRUE);
+
         // Render own stuff
-        Mat4 modelMatrix = m4_identity();
         UpdateCamera(camera, appState->ratio);
         shaderInstance->transformMatrix = &camera->transform;
+
+        Mat4 modelMatrix = m4_identity();
         shaderInstance->modelMatrix = &modelMatrix;
 
         BeginShaderInstance(shaderInstance);
@@ -298,7 +287,15 @@ main(int argc, char**argv)
         glCullFace(GL_BACK);
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LEQUAL);
-        RenderChunkMesh(chunkMesh);
+
+        for(ui32 y = 0; y < world-> yChunks; y++)
+        for(ui32 x = 0; x < world-> xChunks; x++)
+        {
+            modelMatrix = m4_translation(vec3(x*CHUNK_XDIMS, y*CHUNK_YDIMS, 0));
+            UpdateModelMatrix(shaderInstance);
+            ChunkMesh *mesh = GetChunkMesh(world, x, y);
+            RenderChunkMesh(mesh);
+        }
 
         // Render UI
         nk_sdl_render(NK_ANTI_ALIASING_ON, MAX_VERTEX_MEMORY, MAX_ELEMENT_MEMORY);
