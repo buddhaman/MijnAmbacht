@@ -1,33 +1,65 @@
 
 internal inline void
-UpdateChunkNeighbourInfo(World *world, ChunkMesh *mesh, Chunk *chunk)
+UpdateChunkFaceNeighbourInfo(World *world, Chunk *chunk, int xDir, int yDir)
 {
-    if(chunk->x > 0)
+    ChunkMesh *mesh = GetChunkMesh(world, chunk->x, chunk->y);
+    ChunkMesh *neighbourMesh = GetChunkMesh(world, chunk->x+xDir, chunk->y+yDir);
+    ui32 xIter = xDir==0;
+    ui32 yIter = yDir==0;
+    ui32 dims = xIter ? CHUNK_XDIMS : CHUNK_YDIMS;
+    ui32 meshFace = xDir!=0 ? (xDir==1 ? CHUNK_XDIMS-1 : 0) : (yDir==1 ? CHUNK_YDIMS-1 : 0);
+    ui32 neighbourFace = xDir!=0 ? (xDir==1 ? 0 : CHUNK_XDIMS-1) : (yDir==1 ? 0 : CHUNK_YDIMS-1);
+
+    NeighbourFlag setFlag = xDir!=0 ? (xDir==1 ? OCCUPIED_XMIN : OCCUPIED_XMAX) : 
+        (yDir==1 ? OCCUPIED_YMIN : OCCUPIED_YMAX);
+    NeighbourFlag setFlagOpposite = xDir!=0 ? (xDir==1 ? OCCUPIED_XMAX : OCCUPIED_XMIN) : 
+        (yDir==1 ? OCCUPIED_YMAX : OCCUPIED_YMIN);
+    NeighbourFlag setFlagLateral = xIter ? OCCUPIED_XMIN : OCCUPIED_YMIN;
+    NeighbourFlag setFlagLateralOpposite = xIter ? OCCUPIED_XMAX : OCCUPIED_YMAX;
+
+    for(ui32 i = 0; i < dims; i++)
     {
-        ChunkMesh *neighbourMesh = GetChunkMesh(world, chunk->x-1, chunk->y);
-        for(ui32 y = 0; y < CHUNK_YDIMS; y++)
+        ui32 chunkX = xIter*i + (1-xIter)*meshFace;
+        ui32 chunkY = yIter*i + (1-yIter)*meshFace;
+        ui32 neighbourX = xIter*i + (1-xIter)*neighbourFace;
+        ui32 neighbourY = yIter*i + (1-yIter)*neighbourFace;
         for(ui32 z = 0; z < CHUNK_ZDIMS; z++)
         {
-            ui16 block = chunk->blocks[0][y][z];
+            ui32 block = chunk->blocks[chunkX][chunkY][z];
             if(block)
             {
-                neighbourMesh->neighbourInfo[CHUNK_XDIMS-1][y][z] |= OCCUPIED_XMAX;
+                neighbourMesh->neighbourInfo[neighbourX][neighbourY][z] |= setFlag;
+                mesh->neighbourInfo[chunkX-xDir][chunkY-yDir][z] |= setFlagOpposite;
+                if(z < CHUNK_ZDIMS-1) mesh->neighbourInfo[chunkX][chunkY][z+1] |= OCCUPIED_ZMIN;
+                if(z > 0) mesh->neighbourInfo[chunkX][chunkY][z-1] |= OCCUPIED_ZMAX;
+                if(i < dims-1) mesh->neighbourInfo[chunkX+xIter][chunkY+yIter][z] |= setFlagLateral;
+                if(i > 0) mesh->neighbourInfo[chunkX-xIter][chunkY-yIter][z] |= setFlagLateralOpposite;
             }
         }
+    }
+}
+
+internal inline void
+UpdateChunkNeighbourInfo(World *world, ChunkMesh *mesh, Chunk *chunk)
+{
+    // Some are set twice. This is no problem. 
+    if(chunk->x > 0)
+    {
+        UpdateChunkFaceNeighbourInfo(world, chunk, -1, 0);
     }
     if(chunk->x < world->xChunks-1)
     {
-        ChunkMesh *neighbourMesh = GetChunkMesh(world, chunk->x+1, chunk->y);
-        for(ui32 y = 0; y < CHUNK_YDIMS; y++)
-        for(ui32 z = 0; z < CHUNK_ZDIMS; z++)
-        {
-            ui16 block = chunk->blocks[CHUNK_XDIMS-1][y][z];
-            if(block)
-            {
-                neighbourMesh->neighbourInfo[0][y][z] |= OCCUPIED_XMIN;
-            }
-        }
+        UpdateChunkFaceNeighbourInfo(world, chunk, 1, 0);
     }
+    if(chunk->y > 0)
+    {
+        UpdateChunkFaceNeighbourInfo(world, chunk, 0, -1);
+    }
+    if(chunk->y < world->yChunks-1)
+    {
+        UpdateChunkFaceNeighbourInfo(world, chunk, 0, 1);
+    }
+
     for(ui32 x = 1; x < CHUNK_XDIMS-1; x++)
     for(ui32 y = 1; y < CHUNK_YDIMS-1; y++)
     for(ui32 z = 1; z < CHUNK_ZDIMS-1; z++)
@@ -45,7 +77,6 @@ UpdateChunkNeighbourInfo(World *world, ChunkMesh *mesh, Chunk *chunk)
             mesh->neighbourInfo[x][y+1][z] |= OCCUPIED_YMIN;
         }
     }
-
 }
 
 void
@@ -134,8 +165,8 @@ void
 InitWorld(MemoryArena *arena, World *world)
 {
     world->arena = arena;
-    world->xChunks = 4;
-    world->yChunks = 4;
+    world->xChunks = 6;
+    world->yChunks = 6;
     world->chunks = PushAndZeroArray(arena, Chunk, world->xChunks*world->yChunks);
     world->chunkMeshes = PushAndZeroArray(arena, ChunkMesh, world->xChunks*world->yChunks);
 
@@ -152,7 +183,7 @@ InitWorld(MemoryArena *arena, World *world)
         for(ui16 bx = 0; bx < CHUNK_XDIMS; bx++)
         for(ui16 by = 0; by < CHUNK_YDIMS; by++)
         {
-            ui32 height = RandomUI32(30, 40);
+            ui32 height = RandomUI32(70, 80);
             for(ui16 bz = 0; bz < height; bz++)
                 chunk->blocks[bx][by][bz] = 1;
         }
