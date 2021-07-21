@@ -65,6 +65,13 @@ CreateSubArena(MemoryArena *parent, size_t sizeInBytes)
     return arena;
 }
 
+void
+PrintMemoryStatistics(MemoryArena *arena)
+{
+    DebugOut("Used %zu / %zu bytes (%.2lf procent)", arena->used, arena->size,
+            100.0*((r64)arena->used)/((r64)arena->size));
+}
+
 MemoryPool *
 CreateMemoryPool(MemoryArena *arena, size_t elementSize, size_t maxBlocks)
 {

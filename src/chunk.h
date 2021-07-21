@@ -3,6 +3,7 @@
 #define CHUNK_YDIMS 16
 #define CHUNK_ZDIMS 255
 #define CHUNK_UNIT 256
+#define CHUNK_TEX_SQUARE_SIZE 16
 
 typedef struct IVec3 IVec3;
 typedef struct ChunkMesh ChunkMesh;

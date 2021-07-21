@@ -98,6 +98,11 @@ UpdateChunkMesh(World *world, ChunkMesh *mesh, Chunk *chunk)
             IVec3 p110 = iv3_add(pos, ivec3(CHUNK_UNIT, CHUNK_UNIT, 0));
             IVec3 p111 = iv3_add(pos, ivec3(CHUNK_UNIT, CHUNK_UNIT, CHUNK_UNIT));
 
+            ui16 texU = world->textureTableU[block];
+            ui16 texV = world->textureTableV[block];
+            ui16 texUTop = world->textureTableUTop[block];
+            ui16 texVTop = world->textureTableVTop[block];
+
             // X
             if(!(neighbourInfo & OCCUPIED_XMIN))
             {
@@ -106,7 +111,9 @@ UpdateChunkMesh(World *world, ChunkMesh *mesh, Chunk *chunk)
                         p011,
                         p010,
                         p000,
-                        -CHUNK_UNIT, 0, 0);
+                        -CHUNK_UNIT, 0, 0, 
+                        texU, texV);
+
             }
             if(!(neighbourInfo & OCCUPIED_XMAX))
             {
@@ -115,7 +122,8 @@ UpdateChunkMesh(World *world, ChunkMesh *mesh, Chunk *chunk)
                         p110,
                         p111,
                         p101,
-                        CHUNK_UNIT, 0, 0);
+                        CHUNK_UNIT, 0, 0,
+                        texU, texV);
             }
 
             // Y
@@ -126,7 +134,8 @@ UpdateChunkMesh(World *world, ChunkMesh *mesh, Chunk *chunk)
                         p100,
                         p101,
                         p001,
-                        0, -CHUNK_UNIT, 0);
+                        0, -CHUNK_UNIT, 0,
+                        texU, texV);
             }
             if(!(neighbourInfo & OCCUPIED_YMAX))
             {
@@ -135,7 +144,8 @@ UpdateChunkMesh(World *world, ChunkMesh *mesh, Chunk *chunk)
                         p111,
                         p110,
                         p010,
-                        0, CHUNK_UNIT, 0);
+                        0, CHUNK_UNIT, 0,
+                        texU, texV);
             }
 
             // Z
@@ -146,7 +156,8 @@ UpdateChunkMesh(World *world, ChunkMesh *mesh, Chunk *chunk)
                         p110,
                         p100,
                         p000,
-                        0, 0, -CHUNK_UNIT);
+                        0, 0, -CHUNK_UNIT,
+                        texU, texV);
             }
             if(!(neighbourInfo & OCCUPIED_ZMAX))
             {
@@ -155,7 +166,48 @@ UpdateChunkMesh(World *world, ChunkMesh *mesh, Chunk *chunk)
                         p101,
                         p111,
                         p011,
-                        0, 0, CHUNK_UNIT);
+                        0, 0, CHUNK_UNIT,
+                        texUTop, texVTop);
+            }
+        }
+    }
+}
+
+void
+GenerateWorld(World *world)
+{
+    r32 hills = 32.0;
+    r32 roughness = 0.05;
+    ui32 waterLevel = 216;
+    ui32 groundLevel = 200;
+    for(ui32 yChunk = 0; yChunk < world->yChunks; yChunk++)
+    for(ui32 xChunk = 0; xChunk < world->xChunks; xChunk++)
+    {
+        Chunk *chunk = GetChunk(world, xChunk, yChunk);
+        chunk->x = xChunk;
+        chunk->y = yChunk;
+        chunk->z = 0;
+        for(ui16 bx = 0; bx < CHUNK_XDIMS; bx++)
+        for(ui16 by = 0; by < CHUNK_YDIMS; by++)
+        {
+            int x = xChunk*CHUNK_XDIMS+bx;
+            int y = yChunk*CHUNK_YDIMS+by;
+            ui32 height = groundLevel+(ui32)(perlin2d(x, y, roughness, 4)*hills);
+            for(ui16 bz = 0; bz < height; bz++)
+            {
+                if(bz > waterLevel-2 &&
+                        height < waterLevel+2)
+                {
+                    chunk->blocks[bx][by][bz] = BLOCK_SAND;
+                }
+                else
+                {
+                    chunk->blocks[bx][by][bz] = BLOCK_DIRT;
+                }
+            }
+            for(ui16 bz = height; bz < waterLevel; bz++)
+            {
+                chunk->blocks[bx][by][bz] = BLOCK_WATER;
             }
         }
     }
@@ -165,29 +217,32 @@ void
 InitWorld(MemoryArena *arena, World *world)
 {
     world->arena = arena;
-    world->xChunks = 6;
-    world->yChunks = 6;
+    world->xChunks = 10;
+    world->yChunks = 10;
     world->chunks = PushAndZeroArray(arena, Chunk, world->xChunks*world->yChunks);
     world->chunkMeshes = PushAndZeroArray(arena, ChunkMesh, world->xChunks*world->yChunks);
 
+    // Texture table
+    ui16 texSize = CHUNK_TEX_SQUARE_SIZE;
+
+    world->textureTableU[BLOCK_DIRT] = texSize;
+    world->textureTableV[BLOCK_DIRT] = 0;
+    world->textureTableUTop[BLOCK_DIRT] = 0;
+    world->textureTableVTop[BLOCK_DIRT] = 0;
+
+    world->textureTableU[BLOCK_SAND] = texSize*2;
+    world->textureTableV[BLOCK_SAND] = 0;
+    world->textureTableUTop[BLOCK_SAND] = texSize*2;
+    world->textureTableVTop[BLOCK_SAND] = 0;
+
+    world->textureTableU[BLOCK_WATER] = texSize*3;
+    world->textureTableV[BLOCK_WATER] = 0;
+    world->textureTableUTop[BLOCK_WATER] = texSize*3;
+    world->textureTableVTop[BLOCK_WATER] = 0;
+
     // ORDER IS IMPORTANT!!!
-    //
-    // Generate world
-    for(ui32 y = 0; y < world->yChunks; y++)
-    for(ui32 x = 0; x < world->xChunks; x++)
-    {
-        Chunk *chunk = GetChunk(world, x, y);
-        chunk->x = x;
-        chunk->y = y;
-        chunk->z = 0;
-        for(ui16 bx = 0; bx < CHUNK_XDIMS; bx++)
-        for(ui16 by = 0; by < CHUNK_YDIMS; by++)
-        {
-            ui32 height = RandomUI32(70, 80);
-            for(ui16 bz = 0; bz < height; bz++)
-                chunk->blocks[bx][by][bz] = 1;
-        }
-    }
+
+    GenerateWorld(world);
     // Allocate meshes
     for(ui32 y = 0; y < world->yChunks; y++)
     for(ui32 x = 0; x < world->xChunks; x++)

@@ -20,7 +20,6 @@ void main()
     lightDir = normalize(lightDir);
     float dp = clamp(-dot(normal, lightDir), 0.0, 1.0);
     float lightFactor = diffuse * (1.0-dp) + dp;
-    //lightFactor = 1.0;
     FragColor = vec4(lightFactor*col.xyz, col.a);
 }
 

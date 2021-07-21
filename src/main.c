@@ -61,8 +61,8 @@ TimLoadImage(char *path)
 
     glGenTextures(1, &tex);
     glBindTexture(GL_TEXTURE_2D, tex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, x, y, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
@@ -85,6 +85,7 @@ TimLoadImage(char *path)
 #include "app_state.c"
 #include "chunk.c"
 #include "camera.c"
+#include "perlin.c"
 #include "world.c"
 
 #define FRAMES_PER_SECOND 60
@@ -108,8 +109,10 @@ main(int argc, char**argv)
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
 
+#if 0
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
+#endif
 
     SDL_WindowFlags window_flags = 
         (SDL_WindowFlags)(SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
@@ -161,6 +164,9 @@ main(int argc, char**argv)
     b32 done = 0;
     ui32 frameCounter = 0;
 
+    // Load spritesheet
+    ui32 spriteSheetHandle = TimLoadImage("assets/mijn_ambacht_spritesheet.png");
+
     // Setup shader
     Shader *shader = PushStruct(gameArena, Shader);
     InitShader(gameArena, shader, "assets/shaders/mijnshader.vert", "assets/shaders/mijnshader.frag");
@@ -170,10 +176,12 @@ main(int argc, char**argv)
 
     Camera *camera = PushStruct(gameArena, Camera);
     InitCamera(camera);
-    camera->pos = vec3(1, 1, 3);
+    camera->pos = vec3(50, 50, 220);
 
     World *world = PushStruct(gameArena, World);
     InitWorld(gameArena, world);
+    DebugOut("Usage after initializing world: ");
+    PrintMemoryStatistics(gameArena);
 
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
@@ -271,7 +279,7 @@ main(int argc, char**argv)
         glViewport(0, 0, appState->screenWidth, appState->screenHeight);
 
         // Anti aliasing in opengl.
-        glEnable(GL_MULTISAMPLE);
+        glDisable(GL_MULTISAMPLE);
 
         SDL_SetRelativeMouseMode(SDL_TRUE);
 
@@ -287,6 +295,7 @@ main(int argc, char**argv)
         glCullFace(GL_BACK);
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LEQUAL);
+        glBindTexture(GL_TEXTURE_2D, spriteSheetHandle);
 
         for(ui32 y = 0; y < world-> yChunks; y++)
         for(ui32 x = 0; x < world-> xChunks; x++)

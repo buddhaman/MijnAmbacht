@@ -48,7 +48,7 @@ UpdateCamera(Camera *camera, r32 ratio)
     Mat4 lookAtMatrix = m4_look_at(camera->pos, 
             v3_add(camera->pos, camera->direction), 
             vec3(0,0,1));
-    Mat4 perspectiveMatrix = m4_perspective(60.0, ratio, 0.1, 100.0);
+    Mat4 perspectiveMatrix = m4_perspective(60.0, ratio, 0.1, 300.0);
     camera->transform = m4_mul(perspectiveMatrix, lookAtMatrix);
 }
 
