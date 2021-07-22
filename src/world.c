@@ -1,87 +1,83 @@
 
-internal inline void
-UpdateChunkFaceNeighbourInfo(World *world, Chunk *chunk, int xDir, int yDir)
+typedef struct
 {
-    ChunkMesh *mesh = GetChunkMesh(world, chunk->x, chunk->y);
-    ChunkMesh *neighbourMesh = GetChunkMesh(world, chunk->x+xDir, chunk->y+yDir);
-    ui32 xIter = xDir==0;
-    ui32 yIter = yDir==0;
-    ui32 dims = xIter ? CHUNK_XDIMS : CHUNK_YDIMS;
-    ui32 meshFace = xDir!=0 ? (xDir==1 ? CHUNK_XDIMS-1 : 0) : (yDir==1 ? CHUNK_YDIMS-1 : 0);
-    ui32 neighbourFace = xDir!=0 ? (xDir==1 ? 0 : CHUNK_XDIMS-1) : (yDir==1 ? 0 : CHUNK_YDIMS-1);
-
-    NeighbourFlag setFlag = xDir!=0 ? (xDir==1 ? OCCUPIED_XMIN : OCCUPIED_XMAX) : 
-        (yDir==1 ? OCCUPIED_YMIN : OCCUPIED_YMAX);
-    NeighbourFlag setFlagOpposite = xDir!=0 ? (xDir==1 ? OCCUPIED_XMAX : OCCUPIED_XMIN) : 
-        (yDir==1 ? OCCUPIED_YMAX : OCCUPIED_YMIN);
-    NeighbourFlag setFlagLateral = xIter ? OCCUPIED_XMIN : OCCUPIED_YMIN;
-    NeighbourFlag setFlagLateralOpposite = xIter ? OCCUPIED_XMAX : OCCUPIED_YMAX;
-
-    for(ui32 i = 0; i < dims; i++)
+    Chunk *chunk;
+    ChunkMesh *mesh;
+    ui16 x; // In chunk.
+    ui16 y;
+    ui16 z;
+} BlockPosition;
+internal inline b32
+GetBlockPositionSlow(World *world, ui32 x, ui32 y, ui32 z, BlockPosition *blockPosition)
+{
+    int chunkX = x/CHUNK_XDIMS;
+    int chunkY = y/CHUNK_XDIMS;
+    if(chunkX >= 0 && chunkY >= 0 &&
+        chunkX < world->xChunks && chunkY < world->yChunks)
     {
-        ui32 chunkX = xIter*i + (1-xIter)*meshFace;
-        ui32 chunkY = yIter*i + (1-yIter)*meshFace;
-        ui32 neighbourX = xIter*i + (1-xIter)*neighbourFace;
-        ui32 neighbourY = yIter*i + (1-yIter)*neighbourFace;
-        for(ui32 z = 0; z < CHUNK_ZDIMS; z++)
-        {
-            ui32 block = chunk->blocks[chunkX][chunkY][z];
-            if(block)
-            {
-                neighbourMesh->neighbourInfo[neighbourX][neighbourY][z] |= setFlag;
-                mesh->neighbourInfo[chunkX-xDir][chunkY-yDir][z] |= setFlagOpposite;
-                if(z < CHUNK_ZDIMS-1) mesh->neighbourInfo[chunkX][chunkY][z+1] |= OCCUPIED_ZMIN;
-                if(z > 0) mesh->neighbourInfo[chunkX][chunkY][z-1] |= OCCUPIED_ZMAX;
-                if(i < dims-1) mesh->neighbourInfo[chunkX+xIter][chunkY+yIter][z] |= setFlagLateral;
-                if(i > 0) mesh->neighbourInfo[chunkX-xIter][chunkY-yIter][z] |= setFlagLateralOpposite;
-            }
-        }
+        Chunk *chunk = GetChunk(world, chunkX, chunkY);
+        ChunkMesh *mesh = GetChunkMesh(world, chunkX, chunkY);
+        *blockPosition = (BlockPosition){chunk, mesh, x-CHUNK_XDIMS*chunkX, y-CHUNK_YDIMS*chunkY, z};
+        return 1;
+    }
+    else
+    {
+        return 0;
+    }
+}
+
+
+
+internal inline void
+SetBlockNeighbourFlagSlow(World *world, int worldX, int worldY, int worldZ, NeighbourFlag flag)
+{
+    BlockPosition bPos;
+    if(GetBlockPositionSlow(world, worldX, worldY, worldZ, &bPos))
+    {
+        bPos.mesh->neighbourInfo[bPos.x][bPos.y][bPos.z] |= flag;
     }
 }
 
 internal inline void
-UpdateChunkNeighbourInfo(World *world, ChunkMesh *mesh, Chunk *chunk)
+UpdateChunkNeighbourInfoSlow(World *world, ChunkMesh *mesh, Chunk *chunk)
 {
-    // Some are set twice. This is no problem. 
-    if(chunk->x > 0)
+    ui32 chunkX = chunk->xIndex*CHUNK_XDIMS;
+    ui32 chunkY = chunk->yIndex*CHUNK_YDIMS;
+    ChunkIterI16(x, y, z)
     {
-        UpdateChunkFaceNeighbourInfo(world, chunk, -1, 0);
-    }
-    if(chunk->x < world->xChunks-1)
-    {
-        UpdateChunkFaceNeighbourInfo(world, chunk, 1, 0);
-    }
-    if(chunk->y > 0)
-    {
-        UpdateChunkFaceNeighbourInfo(world, chunk, 0, -1);
-    }
-    if(chunk->y < world->yChunks-1)
-    {
-        UpdateChunkFaceNeighbourInfo(world, chunk, 0, 1);
-    }
-
-    for(ui32 x = 1; x < CHUNK_XDIMS-1; x++)
-    for(ui32 y = 1; y < CHUNK_YDIMS-1; y++)
-    for(ui32 z = 1; z < CHUNK_ZDIMS-1; z++)
-    {
+        int xPos = chunkX+x;
+        int yPos = chunkY+y;
+        int zPos = z;
         ui16 block = chunk->blocks[x][y][z];
         if(block)
         {
-            mesh->neighbourInfo[x][y][z-1] |= OCCUPIED_ZMAX;
-            mesh->neighbourInfo[x][y][z+1] |= OCCUPIED_ZMIN;
-
-            mesh->neighbourInfo[x-1][y][z] |= OCCUPIED_XMAX;
-            mesh->neighbourInfo[x+1][y][z] |= OCCUPIED_XMIN;
-
-            mesh->neighbourInfo[x][y-1][z] |= OCCUPIED_YMAX;
-            mesh->neighbourInfo[x][y+1][z] |= OCCUPIED_YMIN;
+            SetBlockNeighbourFlagSlow(world, xPos-1, yPos, zPos, OCCUPIED_XMAX);
+            SetBlockNeighbourFlagSlow(world, xPos+1, yPos, zPos, OCCUPIED_XMIN);
+            SetBlockNeighbourFlagSlow(world, xPos, yPos, zPos-1, OCCUPIED_ZMAX);
+            SetBlockNeighbourFlagSlow(world, xPos, yPos, zPos+1, OCCUPIED_ZMIN);
+            SetBlockNeighbourFlagSlow(world, xPos, yPos-1, zPos, OCCUPIED_YMAX);
+            SetBlockNeighbourFlagSlow(world, xPos, yPos+1, zPos, OCCUPIED_YMIN);
         }
     }
 }
 
+global_variable fnl_state noiseX;
 void
 UpdateChunkMesh(World *world, ChunkMesh *mesh, Chunk *chunk)
 {
+    mesh->nVertices = 0;
+    mesh->nIndices = 0;
+
+    local_persist b32 init = 0;
+    if(!init)
+    {
+        noiseX = fnlCreateState();
+        noiseX.noise_type = FNL_NOISE_PERLIN;
+        noiseX.octaves = 4;
+        noiseX.seed = RandomUI32(0, 123123U);
+        init = 1;
+    }
+
     ChunkIterI16(x, y, z)
     {
         ui16 block = chunk->blocks[x][y][z];
@@ -103,6 +99,17 @@ UpdateChunkMesh(World *world, ChunkMesh *mesh, Chunk *chunk)
             ui16 texUTop = world->textureTableUTop[block];
             ui16 texVTop = world->textureTableVTop[block];
 
+            r32 roughness = 1;
+            int worldX = chunk->xIndex*CHUNK_XDIMS + x;
+            int worldY = chunk->yIndex*CHUNK_YDIMS + y;
+            r32 noise2Value = fnlGetNoise2D(&noiseX, worldX*roughness, worldY*roughness);
+            ui32 r = 255U*(noise2Value*0.8+0.5);
+            ui32 g = 255-z;
+            ui32 b = 50;
+            ui32 greenColor = (r << 24) + (g << 16) + (b << 8) + 0xff;
+            //greenColor = RandomUI32(0, 0xffffffff);
+            ui32 topColor = block==BLOCK_DIRT ? greenColor : 0xffffffff;
+
             // X
             if(!(neighbourInfo & OCCUPIED_XMIN))
             {
@@ -113,7 +120,6 @@ UpdateChunkMesh(World *world, ChunkMesh *mesh, Chunk *chunk)
                         p000,
                         -CHUNK_UNIT, 0, 0, 
                         texU, texV);
-
             }
             if(!(neighbourInfo & OCCUPIED_XMAX))
             {
@@ -161,13 +167,33 @@ UpdateChunkMesh(World *world, ChunkMesh *mesh, Chunk *chunk)
             }
             if(!(neighbourInfo & OCCUPIED_ZMAX))
             {
+#if 1
+                ui32 fromIdx = mesh->nVertices;
+
+                ui16 texSize = CHUNK_TEX_SQUARE_SIZE;
+                ui16 xn = 0; ui16 yn = 0; ui16 zn = CHUNK_UNIT;
+                ui16 u = texUTop; ui16 v = texVTop;
+                PushColoredVertexToChunkMesh(mesh, p001, xn, yn, zn, u, v, topColor);
+                PushColoredVertexToChunkMesh(mesh, p101, xn, yn, zn, u+texSize, v, topColor);
+                PushColoredVertexToChunkMesh(mesh, p111, xn, yn, zn, u+texSize, v+texSize, topColor);
+                PushColoredVertexToChunkMesh(mesh, p011, xn, yn, zn, u, v+texSize, topColor);
+
+                PushIndexToChunkMesh(mesh, fromIdx);
+                PushIndexToChunkMesh(mesh, fromIdx+1);
+                PushIndexToChunkMesh(mesh, fromIdx+2);
+                PushIndexToChunkMesh(mesh, fromIdx+2);
+                PushIndexToChunkMesh(mesh, fromIdx+3);
+                PushIndexToChunkMesh(mesh, fromIdx+0);
+
+#else
                 PushQuadToChunkMesh(mesh,
-                        p001,
-                        p101,
-                        p111,
-                        p011,
+                        p010,
+                        p110,
+                        p100,
+                        p000,
                         0, 0, CHUNK_UNIT,
-                        texUTop, texVTop);
+                        texU, texV);
+#endif
             }
         }
     }
@@ -176,23 +202,33 @@ UpdateChunkMesh(World *world, ChunkMesh *mesh, Chunk *chunk)
 void
 GenerateWorld(World *world)
 {
-    r32 hills = 32.0;
-    r32 roughness = 0.05;
-    ui32 waterLevel = 216;
-    ui32 groundLevel = 200;
+    r32 hills = 30;
+    r32 roughness = 6;
+    r32 roughness3 = 8;
+    ui32 waterLevel = 70;
+    ui32 groundLevel = 80;
+    fnl_state noise2d = fnlCreateState();
+    
+    noise2d.noise_type = FNL_NOISE_PERLIN;
+    noise2d.octaves = 4;
+    noise2d.seed = RandomUI32(0, 123123U);
+
+    fnl_state noise3d = fnlCreateState();
+
     for(ui32 yChunk = 0; yChunk < world->yChunks; yChunk++)
     for(ui32 xChunk = 0; xChunk < world->xChunks; xChunk++)
     {
         Chunk *chunk = GetChunk(world, xChunk, yChunk);
-        chunk->x = xChunk;
-        chunk->y = yChunk;
+        chunk->xIndex = xChunk;
+        chunk->yIndex = yChunk;
         chunk->z = 0;
         for(ui16 bx = 0; bx < CHUNK_XDIMS; bx++)
         for(ui16 by = 0; by < CHUNK_YDIMS; by++)
         {
             int x = xChunk*CHUNK_XDIMS+bx;
             int y = yChunk*CHUNK_YDIMS+by;
-            ui32 height = groundLevel+(ui32)(perlin2d(x, y, roughness, 4)*hills);
+            r32 noise2Value = fnlGetNoise2D(&noise2d, x*roughness, y*roughness);
+            ui32 height = groundLevel+(ui32)(noise2Value*hills);
             for(ui16 bz = 0; bz < height; bz++)
             {
                 if(bz > waterLevel-2 &&
@@ -200,14 +236,26 @@ GenerateWorld(World *world)
                 {
                     chunk->blocks[bx][by][bz] = BLOCK_SAND;
                 }
-                else
+                else if(bz > waterLevel-15)
                 {
                     chunk->blocks[bx][by][bz] = BLOCK_DIRT;
+                }
+                else
+                {
+                    chunk->blocks[bx][by][bz] = BLOCK_STONE;
                 }
             }
             for(ui16 bz = height; bz < waterLevel; bz++)
             {
                 chunk->blocks[bx][by][bz] = BLOCK_WATER;
+            }
+            for(ui16 bz = 0; bz < height; bz++)
+            {
+                r32 noise3Value = fnlGetNoise3D(&noise3d, x*roughness3/4, y*roughness3/4, bz*roughness3);
+                if(noise3Value < -0.4 && chunk->blocks[bx][by][bz]!=BLOCK_WATER)
+                {
+                    chunk->blocks[bx][by][bz] = 0;
+                }
             }
         }
     }
@@ -225,20 +273,25 @@ InitWorld(MemoryArena *arena, World *world)
     // Texture table
     ui16 texSize = CHUNK_TEX_SQUARE_SIZE;
 
-    world->textureTableU[BLOCK_DIRT] = texSize;
+    world->textureTableU[BLOCK_DIRT] = texSize*2;
     world->textureTableV[BLOCK_DIRT] = 0;
     world->textureTableUTop[BLOCK_DIRT] = 0;
     world->textureTableVTop[BLOCK_DIRT] = 0;
 
     world->textureTableU[BLOCK_SAND] = texSize*2;
-    world->textureTableV[BLOCK_SAND] = 0;
+    world->textureTableV[BLOCK_SAND] = texSize;
     world->textureTableUTop[BLOCK_SAND] = texSize*2;
-    world->textureTableVTop[BLOCK_SAND] = 0;
+    world->textureTableVTop[BLOCK_SAND] = texSize;
 
-    world->textureTableU[BLOCK_WATER] = texSize*3;
+    world->textureTableU[BLOCK_WATER] = texSize*14;
     world->textureTableV[BLOCK_WATER] = 0;
-    world->textureTableUTop[BLOCK_WATER] = texSize*3;
+    world->textureTableUTop[BLOCK_WATER] = texSize*14;
     world->textureTableVTop[BLOCK_WATER] = 0;
+
+    world->textureTableU[BLOCK_STONE] = texSize;
+    world->textureTableV[BLOCK_STONE] = 0;
+    world->textureTableUTop[BLOCK_STONE] = texSize;
+    world->textureTableVTop[BLOCK_STONE] = 0;
 
     // ORDER IS IMPORTANT!!!
 
@@ -257,7 +310,7 @@ InitWorld(MemoryArena *arena, World *world)
     {
         Chunk *chunk = GetChunk(world, x, y);
         ChunkMesh *mesh = GetChunkMesh(world, x, y);
-        UpdateChunkNeighbourInfo(world, mesh, chunk);
+        UpdateChunkNeighbourInfoSlow(world, mesh, chunk);
     }
     
     // Update mesh and buffer data

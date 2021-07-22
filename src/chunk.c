@@ -19,8 +19,8 @@ PushIndexToChunkMesh(ChunkMesh *mesh, ui32 index)
 }
 
 internal inline void
-PushVertexToChunkMesh(ChunkMesh *mesh, IVec3 p, i16 xn, i16 yn, i16 zn, 
-        ui16 u, ui16 v)
+PushColoredVertexToChunkMesh(ChunkMesh *mesh, IVec3 p, i16 xn, i16 yn, i16 zn, 
+        ui16 u, ui16 v, ui32 color)
 {
     Assert(mesh->nVertices < mesh->maxVertices);
     ui32 idx = mesh->nVertices*mesh->stride;
@@ -31,22 +31,18 @@ PushVertexToChunkMesh(ChunkMesh *mesh, IVec3 p, i16 xn, i16 yn, i16 zn,
     mesh->vertexBuffer[idx+4] = yn+CHUNK_UNIT;
     mesh->vertexBuffer[idx+5] = zn+CHUNK_UNIT;
     mesh->vertexBuffer[idx+6] = (v<<8)+u;
+    //mesh->vertexBuffer[idx+7] = (color << 16) & (0xffff);
+    //mesh->vertexBuffer[idx+8] = (color) & (0xffff);
+    *((ui32 *)&mesh->vertexBuffer[idx+7]) = color;      // 7 and 8
     mesh->nVertices++;
 }
 
-#if 0
 internal inline void
-PushTriangleToChunkMesh(ChunkMesh *mesh, IVec3 p0, IVec3 p1, IVec3 p2)
+PushVertexToChunkMesh(ChunkMesh *mesh, IVec3 p, i16 xn, i16 yn, i16 zn, 
+        ui16 u, ui16 v)
 {
-    ui16 fromIdx = mesh->nVertices;
-    PushVertexToChunkMesh(mesh, p0);
-    PushVertexToChunkMesh(mesh, p1);
-    PushVertexToChunkMesh(mesh, p2);
-    PushIndexToChunkMesh(mesh, fromIdx);
-    PushIndexToChunkMesh(mesh, fromIdx+1);
-    PushIndexToChunkMesh(mesh, fromIdx+2);
+    PushColoredVertexToChunkMesh(mesh, p, xn, yn, zn, u, v, 0xffffffff);
 }
-#endif
 
 internal inline void
 PushQuadToChunkMesh(ChunkMesh *mesh, IVec3 p0, IVec3 p1, IVec3 p2, IVec3 p3, 
@@ -55,7 +51,7 @@ PushQuadToChunkMesh(ChunkMesh *mesh, IVec3 p0, IVec3 p1, IVec3 p2, IVec3 p3,
 {
     ui32 fromIdx = mesh->nVertices;
 
-    ui16 texSize = CHUNK_TEX_SQUARE_SIZE-1;
+    ui16 texSize = CHUNK_TEX_SQUARE_SIZE;
     PushVertexToChunkMesh(mesh, p0, xn, yn, zn, u, v);
     PushVertexToChunkMesh(mesh, p1, xn, yn, zn, u+texSize, v);
     PushVertexToChunkMesh(mesh, p2, xn, yn, zn, u+texSize, v+texSize);
@@ -141,7 +137,7 @@ BufferChunkMesh(ChunkMesh *mesh)
             mesh->indexBuffer,
             usage);
     // Print some stats
-    DebugOut("%p VertexBuffer: %u / %u", mesh, mesh->nIndices, mesh->maxIndices);
+    //DebugOut("%p VertexBuffer: %u / %u", mesh, mesh->nIndices, mesh->maxIndices);
 }
 
 void
@@ -156,9 +152,11 @@ AllocateChunkMesh(MemoryArena *arena, ChunkMesh *mesh)
 {
     *mesh = (ChunkMesh){};
 
-    mesh->stride = 7;
-    mesh->maxVertices = 32U*256U*24U;
-    mesh->maxIndices = 32U*256U*36U;
+    mesh->stride = 9;
+
+    ui32 zdims = CHUNK_ZDIMS;
+    mesh->maxVertices = 32U*24U*zdims;
+    mesh->maxIndices = 32U*36U*zdims;
     mesh->vertexBuffer = PushArray(arena, ui16, ((size_t)mesh->maxVertices)*((size_t)mesh->stride));
     mesh->indexBuffer = PushArray(arena, ui32, mesh->maxIndices);
 
@@ -188,5 +186,11 @@ AllocateChunkMesh(MemoryArena *arena, ChunkMesh *mesh)
     glVertexAttribIPointer(2, 2, GL_UNSIGNED_BYTE,
             mesh->stride*sizeof(ui16), (void*)memOffset);
     memOffset+=1*sizeof(ui16);
+
+    // Color index
+    glEnableVertexAttribArray(3);
+    glVertexAttribPointer(3, 4, GL_UNSIGNED_BYTE, GL_TRUE,
+            mesh->stride*sizeof(ui16), (void*)memOffset);
+    memOffset+=2*sizeof(ui16);
 }
 

@@ -3,12 +3,14 @@ Minecraft clone #2136216361237712
 
 Todo:
 
-- Multiple types of blocks. 
+- Make full texture table.
+- Implement color on vertices.
+- Do lighting when calculating chunk.
+
 - Implement random generator.
-- Use perlin noise to generate pretty terain.
-- Transparency. Generate water.
+- Transparency. Generate waterchunk
 - Use cellular automata to update water.
-- Normal meshes with floats.
+- Regular meshes with floats.
 - Use floatmeshes to make trees. Make function that can draw beams like lines.
 - Physics engine (verlet).
 - Replace static trees with dynamic trees if player is close.
@@ -17,6 +19,8 @@ Todo:
 - Use physics engine to generate falling blocks after mining. 
 
 done:
+- Use perlin noise to generate pretty terain.
+- Multiple types of blocks. 
 - Multiple chunks.
 - Wireframe rendering.              
 - Don't render invisible faces.     

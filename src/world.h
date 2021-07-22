@@ -10,6 +10,7 @@ typedef enum
     BLOCK_DIRT = 1,
     BLOCK_SAND = 2,
     BLOCK_WATER = 3,
+    BLOCK_STONE = 4,
 } BlockType;
 
 struct World

@@ -85,6 +85,7 @@ TimLoadImage(char *path)
 #include "app_state.c"
 #include "chunk.c"
 #include "camera.c"
+#define FNL_IMPL
 #include "perlin.c"
 #include "world.c"
 
@@ -165,7 +166,8 @@ main(int argc, char**argv)
     ui32 frameCounter = 0;
 
     // Load spritesheet
-    ui32 spriteSheetHandle = TimLoadImage("assets/mijn_ambacht_spritesheet.png");
+    //ui32 spriteSheetHandle = TimLoadImage("assets/mijn_ambacht_spritesheet.png");
+    ui32 spriteSheetHandle = TimLoadImage("assets/minecraft_default.png");
 
     // Setup shader
     Shader *shader = PushStruct(gameArena, Shader);
@@ -176,7 +178,7 @@ main(int argc, char**argv)
 
     Camera *camera = PushStruct(gameArena, Camera);
     InitCamera(camera);
-    camera->pos = vec3(50, 50, 220);
+    camera->pos = vec3(50, 50, 120);
 
     World *world = PushStruct(gameArena, World);
     InitWorld(gameArena, world);
@@ -283,6 +285,18 @@ main(int argc, char**argv)
 
         SDL_SetRelativeMouseMode(SDL_TRUE);
 
+#if 0
+        Chunk *chunk = world->chunks;
+        ChunkMesh *chunkMesh = world->chunkMeshes;
+        ui32 rx = RandomUI32(0, CHUNK_XDIMS);
+        ui32 ry = RandomUI32(0, CHUNK_YDIMS);
+        ui32 rz = RandomUI32(0, CHUNK_ZDIMS);
+        chunk->blocks[rx][ry][rz] = 0;
+        UpdateChunkNeighbourInfo(world, chunkMesh, chunk);
+        UpdateChunkMesh(world, chunkMesh, chunk);
+        BufferChunkMesh(chunkMesh);
+#endif
+        
         // Render own stuff
         UpdateCamera(camera, appState->ratio);
         shaderInstance->transformMatrix = &camera->transform;

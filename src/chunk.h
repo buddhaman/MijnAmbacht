@@ -51,9 +51,9 @@ struct ChunkMesh
 
 struct Chunk 
 {
-    i16 x;
-    i16 y;
-    i16 z;
+    i16 xIndex;
+    i16 yIndex;
+    int z;
     ui16 blocks[CHUNK_XDIMS][CHUNK_YDIMS][CHUNK_ZDIMS];
 };
 
