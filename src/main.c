@@ -70,7 +70,11 @@ TimLoadImage(char *path)
     return tex;
 }
 
-// Own files
+// Not my own files
+#define FNL_IMPL
+#include "perlin.c"
+
+// My own files
 #include "cool_memory.h"
 #include "tim_math.h"
 #include "shader.h"
@@ -85,8 +89,6 @@ TimLoadImage(char *path)
 #include "app_state.c"
 #include "chunk.c"
 #include "camera.c"
-#define FNL_IMPL
-#include "perlin.c"
 #include "world.c"
 
 #define FRAMES_PER_SECOND 60
@@ -178,7 +180,7 @@ main(int argc, char**argv)
 
     Camera *camera = PushStruct(gameArena, Camera);
     InitCamera(camera);
-    camera->pos = vec3(50, 50, 120);
+    camera->pos = vec3(50, 50, 90);
 
     World *world = PushStruct(gameArena, World);
     InitWorld(gameArena, world);
@@ -230,6 +232,12 @@ main(int argc, char**argv)
                 appState->mouseScrollY += event.wheel.y;
             } break;
 
+            case SDL_MOUSEMOTION:
+            {
+                appState->dx = event.motion.xrel;
+                appState->dy = event.motion.yrel;
+            }break;
+
             case SDL_KEYUP:
             {
                 RegisterKeyAction(appState, MapKeyCodeToAction(event.key.keysym.sym), 0);
@@ -264,8 +272,6 @@ main(int argc, char**argv)
         appState->ratio = (r32)appState->screenWidth / ((r32)appState->screenHeight);
         i32 mx, my;
         SDL_GetMouseState(&mx, &my);
-        appState->dx = mx-appState->mx;
-        appState->dy = my-appState->my;
         appState->mx = mx;
         appState->my = my;
         appState->normalizedMX = 2*((r32)mx)/appState->screenWidth - 1.0;
@@ -283,7 +289,10 @@ main(int argc, char**argv)
         // Anti aliasing in opengl.
         glDisable(GL_MULTISAMPLE);
 
+#if 0
         SDL_SetRelativeMouseMode(SDL_TRUE);
+        //SDL_WarpMouseInWindow(window, appState->screenWidth/2, appState->screenHeight/2);
+#endif
 
 #if 0
         Chunk *chunk = world->chunks;
@@ -311,13 +320,70 @@ main(int argc, char**argv)
         glDepthFunc(GL_LEQUAL);
         glBindTexture(GL_TEXTURE_2D, spriteSheetHandle);
 
-        for(ui32 y = 0; y < world-> yChunks; y++)
-        for(ui32 x = 0; x < world-> xChunks; x++)
+        Vec3 playerPos = camera->pos;
+#if 1
+        r32 viewSize = CHUNK_XDIMS*world->xChunks/2.0;
+        Int16Vec playerChunkIndices = GetChunkIndicesAtPosition(vec2(playerPos.x-viewSize, playerPos.y-viewSize));
+        int newActiveX  = playerChunkIndices.x;
+        int newActiveY = playerChunkIndices.y;
+        if(newActiveX != world->activeChunkX || newActiveY!=world->activeChunkY)
         {
-            modelMatrix = m4_translation(vec3(x*CHUNK_XDIMS, y*CHUNK_YDIMS, 0));
-            UpdateModelMatrix(shaderInstance);
-            ChunkMesh *mesh = GetChunkMesh(world, x, y);
-            RenderChunkMesh(mesh);
+            // Just reload everything
+            for(int i = 0; i < world->nChunks; i++)
+            {
+                Chunk *chunk = world->chunks[i];
+                if(chunk)
+                {
+                    ChunkMesh *mesh = chunk->mesh;
+                    memset(chunk, 0, sizeof(Chunk));
+                    chunk->mesh = mesh;
+                }
+                world->chunks[i] = NULL;
+            }
+        }
+        world->activeChunkX = newActiveX;
+        world->activeChunkY = newActiveY;
+#endif
+        //DebugOut("%d %d", world->activeChunkX, world->activeChunkY);
+        for(int y = world->activeChunkY; y < world->yChunks+world->activeChunkY; y++)
+        for(int x = world->activeChunkX; x < world->xChunks+world->activeChunkX; x++)
+        {
+            // Weird, but is for loading.
+            GetChunkSlow(world, x, y);
+        }
+        for(int y = world->activeChunkY; y < world->yChunks+world->activeChunkY; y++)
+        for(int x = world->activeChunkX; x < world->xChunks+world->activeChunkX; x++)
+        {
+            Chunk *chunk = GetChunkSlow(world, x, y);
+            
+            if(chunk && !chunk->isLoaded)
+            {
+                DebugOut("Loading chunk neighbour info %d %d", x, y);
+                UpdateChunkNeighbourInfoSlow(world, chunk);
+            }
+        }
+        for(int y = world->activeChunkY; y < world->yChunks+world->activeChunkY; y++)
+        for(int x = world->activeChunkX; x < world->xChunks+world->activeChunkX; x++)
+        {
+            Chunk *chunk = GetChunkSlow(world, x, y);
+            
+            if(chunk && !chunk->isLoaded)
+            {
+                UpdateChunkMesh(world, chunk);
+                BufferChunkMesh(chunk->mesh);
+                chunk->isLoaded = 1;
+            }
+        }
+        for(int y = world->activeChunkY; y < world->yChunks+world->activeChunkY; y++)
+        for(int x = world->activeChunkX; x < world->xChunks+world->activeChunkX; x++)
+        {
+            Chunk *chunk = GetChunkSlow(world, x, y);
+            if(chunk)
+            {
+                modelMatrix = m4_translation(vec3(chunk->xIndex*CHUNK_XDIMS, chunk->yIndex*CHUNK_YDIMS, 0));
+                UpdateModelMatrix(shaderInstance);
+                RenderChunkMesh(chunk->mesh);
+            }
         }
 
         // Render UI

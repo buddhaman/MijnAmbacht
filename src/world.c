@@ -1,23 +1,128 @@
 
 typedef struct
 {
+    int x;
+    int y;
+} Int16Vec;
+internal inline Int16Vec
+GetChunkIndicesAtPosition(Vec2 pos)
+{
+    return (Int16Vec){(int)floor(pos.x/CHUNK_XDIMS), (int)floor(pos.y/CHUNK_XDIMS)};
+}
+
+internal inline void
+GenerateChunk(World *world, Chunk *chunk)
+{
+    memset(chunk->blocks, 0, sizeof(chunk->blocks));
+    r32 roughness2 = world->generator.roughness2;
+    r32 roughness3 = world->generator.roughness3;
+    r32 hillRoughness = world->generator.hillRoughness;
+
+    for(ui16 bx = 0; bx < CHUNK_XDIMS; bx++)
+    for(ui16 by = 0; by < CHUNK_YDIMS; by++)
+    {
+        int x = chunk->xIndex*CHUNK_XDIMS+bx + 1000;
+        int y = chunk->yIndex*CHUNK_YDIMS+by + 1000;
+        r32 noise2Value = fnlGetNoise2D(&world->generator.noise2d, x*roughness2, y*roughness2);
+        r32 hillNoiseValue = fnlGetNoise2D(&world->generator.hillNoise, x*hillRoughness, y*hillRoughness);
+        r32 hillFactor = 0.0f;
+        if(noise2Value > 0.0f)
+        {
+            hillFactor = noise2Value;
+        }
+        ui32 height = world->generator.groundLevel+
+            (ui32)(noise2Value*world->generator.firstSmoothness + 
+                    world->generator.hillHeight*hillFactor*hillNoiseValue);
+        Assert(height < 255);
+        for(ui16 bz = 0; bz < height; bz++)
+        {
+            if(bz > world->generator.waterLevel-2 &&
+                    height < world->generator.waterLevel+2)
+            {
+                chunk->blocks[bx][by][bz] = BLOCK_SAND;
+            }
+            else if(bz > world->generator.waterLevel-15)
+            {
+                chunk->blocks[bx][by][bz] = BLOCK_DIRT;
+            }
+            else
+            {
+                chunk->blocks[bx][by][bz] = BLOCK_STONE;
+            }
+        }
+        for(ui16 bz = height; bz < world->generator.waterLevel; bz++)
+        {
+            chunk->blocks[bx][by][bz] = BLOCK_WATER;
+        }
+        for(ui16 bz = 0; bz < height; bz++)
+        {
+            r32 heightFactor = ((r32)bz)/height;
+            r32 noise3Value = fnlGetNoise3D(&world->generator.noise3d, x*roughness3/4, y*roughness3/4, bz*roughness3);
+            if((1.0-heightFactor*heightFactor*heightFactor)*noise3Value < -0.4 && chunk->blocks[bx][by][bz]!=BLOCK_WATER)
+            {
+                chunk->blocks[bx][by][bz] = 0;
+            }
+        }
+    }
+
+}
+
+// Generates chunk if it doesnt exist.
+internal inline Chunk *
+GetChunkSlow(World *world, int x, int y)
+{
+    int xIdx = x-world->activeChunkX;
+    int yIdx = y-world->activeChunkY;
+    if(xIdx >= 0 && yIdx >= 0
+            && xIdx < world->xChunks && yIdx < world->yChunks)
+    {
+        Chunk *chunk = world->chunks[xIdx+yIdx*world->xChunks];
+        if(!chunk)
+        {
+            // load inactive chunk
+            for(ui32 chunkIdx = 0; 
+                    chunkIdx < world->nChunks; 
+                    chunkIdx++)
+            {
+                Chunk *newChunk = world->chunkArray + chunkIdx;
+                if(!newChunk->isActive)
+                {
+                    chunk = world->chunks[xIdx+yIdx*world->xChunks] = newChunk;
+                    chunk->xIndex = x;
+                    chunk->yIndex = y;
+                    chunk->z = 0;
+                    GenerateChunk(world, chunk);
+                    chunk->isActive = 1;
+                    DebugOut("Generated chunk %d %d", chunk->xIndex, chunk->yIndex);
+                    break;
+                }
+            }
+        }
+        return chunk;
+    }
+    else
+    {
+        return NULL;
+    }
+}
+
+typedef struct
+{
     Chunk *chunk;
-    ChunkMesh *mesh;
-    ui16 x; // In chunk.
-    ui16 y;
-    ui16 z;
+    i16 x; // In chunk.
+    i16 y;
+    i16 z;
 } BlockPosition;
 internal inline b32
-GetBlockPositionSlow(World *world, ui32 x, ui32 y, ui32 z, BlockPosition *blockPosition)
+GetBlockPositionSlow(World *world, int x, int y, int z, BlockPosition *blockPosition)
 {
-    int chunkX = x/CHUNK_XDIMS;
-    int chunkY = y/CHUNK_XDIMS;
-    if(chunkX >= 0 && chunkY >= 0 &&
-        chunkX < world->xChunks && chunkY < world->yChunks)
+    if(z < 0 || z > CHUNK_ZDIMS)
+        return 0;
+    Int16Vec chunkIdx = GetChunkIndicesAtPosition(vec2(x, y));
+    Chunk *chunk = GetChunkSlow(world, chunkIdx.x, chunkIdx.y);
+    if(chunk)
     {
-        Chunk *chunk = GetChunk(world, chunkX, chunkY);
-        ChunkMesh *mesh = GetChunkMesh(world, chunkX, chunkY);
-        *blockPosition = (BlockPosition){chunk, mesh, x-CHUNK_XDIMS*chunkX, y-CHUNK_YDIMS*chunkY, z};
+        *blockPosition = (BlockPosition){chunk, x-CHUNK_XDIMS*chunk->xIndex, y-CHUNK_YDIMS*chunk->yIndex, z};
         return 1;
     }
     else
@@ -26,23 +131,23 @@ GetBlockPositionSlow(World *world, ui32 x, ui32 y, ui32 z, BlockPosition *blockP
     }
 }
 
-
-
 internal inline void
 SetBlockNeighbourFlagSlow(World *world, int worldX, int worldY, int worldZ, NeighbourFlag flag)
 {
     BlockPosition bPos;
     if(GetBlockPositionSlow(world, worldX, worldY, worldZ, &bPos))
     {
-        bPos.mesh->neighbourInfo[bPos.x][bPos.y][bPos.z] |= flag;
+        Assert(bPos.x >= 0 && bPos.y >= 0 && bPos.z >= 0
+                && bPos.x < CHUNK_XDIMS && bPos.y < CHUNK_YDIMS && bPos.z < CHUNK_ZDIMS);
+        bPos.chunk->neighbourInfo[bPos.x][bPos.y][bPos.z] |= flag;
     }
 }
 
 internal inline void
-UpdateChunkNeighbourInfoSlow(World *world, ChunkMesh *mesh, Chunk *chunk)
+UpdateChunkNeighbourInfoSlow(World *world, Chunk *chunk)
 {
-    ui32 chunkX = chunk->xIndex*CHUNK_XDIMS;
-    ui32 chunkY = chunk->yIndex*CHUNK_YDIMS;
+    int chunkX = chunk->xIndex*CHUNK_XDIMS;
+    int chunkY = chunk->yIndex*CHUNK_YDIMS;
     ChunkIterI16(x, y, z)
     {
         int xPos = chunkX+x;
@@ -63,8 +168,9 @@ UpdateChunkNeighbourInfoSlow(World *world, ChunkMesh *mesh, Chunk *chunk)
 
 global_variable fnl_state noiseX;
 void
-UpdateChunkMesh(World *world, ChunkMesh *mesh, Chunk *chunk)
+UpdateChunkMesh(World *world, Chunk *chunk)
 {
+    ChunkMesh *mesh = chunk->mesh;
     mesh->nVertices = 0;
     mesh->nIndices = 0;
 
@@ -72,7 +178,7 @@ UpdateChunkMesh(World *world, ChunkMesh *mesh, Chunk *chunk)
     if(!init)
     {
         noiseX = fnlCreateState();
-        noiseX.noise_type = FNL_NOISE_PERLIN;
+        noiseX.noise_type = FNL_NOISE_OPENSIMPLEX2S,
         noiseX.octaves = 4;
         noiseX.seed = RandomUI32(0, 123123U);
         init = 1;
@@ -81,10 +187,11 @@ UpdateChunkMesh(World *world, ChunkMesh *mesh, Chunk *chunk)
     ChunkIterI16(x, y, z)
     {
         ui16 block = chunk->blocks[x][y][z];
+        Assert(block < 5);
         IVec3 pos = ivec3(x*CHUNK_UNIT, y*CHUNK_UNIT, z*CHUNK_UNIT);
         if(block)
         {
-            ui8 neighbourInfo = mesh->neighbourInfo[x][y][z];
+            ui8 neighbourInfo = chunk->neighbourInfo[x][y][z];
             IVec3 p000 = pos;
             IVec3 p001 = iv3_add(pos, ivec3(0, 0, CHUNK_UNIT));
             IVec3 p010 = iv3_add(pos, ivec3(0, CHUNK_UNIT, 0));
@@ -200,75 +307,40 @@ UpdateChunkMesh(World *world, ChunkMesh *mesh, Chunk *chunk)
 }
 
 void
-GenerateWorld(World *world)
-{
-    r32 hills = 30;
-    r32 roughness = 6;
-    r32 roughness3 = 8;
-    ui32 waterLevel = 70;
-    ui32 groundLevel = 80;
-    fnl_state noise2d = fnlCreateState();
-    
-    noise2d.noise_type = FNL_NOISE_PERLIN;
-    noise2d.octaves = 4;
-    noise2d.seed = RandomUI32(0, 123123U);
-
-    fnl_state noise3d = fnlCreateState();
-
-    for(ui32 yChunk = 0; yChunk < world->yChunks; yChunk++)
-    for(ui32 xChunk = 0; xChunk < world->xChunks; xChunk++)
-    {
-        Chunk *chunk = GetChunk(world, xChunk, yChunk);
-        chunk->xIndex = xChunk;
-        chunk->yIndex = yChunk;
-        chunk->z = 0;
-        for(ui16 bx = 0; bx < CHUNK_XDIMS; bx++)
-        for(ui16 by = 0; by < CHUNK_YDIMS; by++)
-        {
-            int x = xChunk*CHUNK_XDIMS+bx;
-            int y = yChunk*CHUNK_YDIMS+by;
-            r32 noise2Value = fnlGetNoise2D(&noise2d, x*roughness, y*roughness);
-            ui32 height = groundLevel+(ui32)(noise2Value*hills);
-            for(ui16 bz = 0; bz < height; bz++)
-            {
-                if(bz > waterLevel-2 &&
-                        height < waterLevel+2)
-                {
-                    chunk->blocks[bx][by][bz] = BLOCK_SAND;
-                }
-                else if(bz > waterLevel-15)
-                {
-                    chunk->blocks[bx][by][bz] = BLOCK_DIRT;
-                }
-                else
-                {
-                    chunk->blocks[bx][by][bz] = BLOCK_STONE;
-                }
-            }
-            for(ui16 bz = height; bz < waterLevel; bz++)
-            {
-                chunk->blocks[bx][by][bz] = BLOCK_WATER;
-            }
-            for(ui16 bz = 0; bz < height; bz++)
-            {
-                r32 noise3Value = fnlGetNoise3D(&noise3d, x*roughness3/4, y*roughness3/4, bz*roughness3);
-                if(noise3Value < -0.4 && chunk->blocks[bx][by][bz]!=BLOCK_WATER)
-                {
-                    chunk->blocks[bx][by][bz] = 0;
-                }
-            }
-        }
-    }
-}
-
-void
 InitWorld(MemoryArena *arena, World *world)
 {
     world->arena = arena;
-    world->xChunks = 10;
-    world->yChunks = 10;
-    world->chunks = PushAndZeroArray(arena, Chunk, world->xChunks*world->yChunks);
-    world->chunkMeshes = PushAndZeroArray(arena, ChunkMesh, world->xChunks*world->yChunks);
+    world->xChunks = 6;
+    world->yChunks = 6;
+    world->chunkArray = PushAndZeroArray(arena, Chunk, world->xChunks*world->yChunks);
+    world->chunks = PushAndZeroArray(arena, Chunk*, world->xChunks*world->yChunks);
+    world->nChunks = world->xChunks*world->yChunks;
+    world->activeChunkX = 0;
+    world->activeChunkY = 0;
+
+    // Init generator
+    world->generator.firstSmoothness = 2;
+    world->generator.roughness2 = 3;
+    world->generator.roughness3 = 9;
+    world->generator.hillRoughness = 1;
+    world->generator.hillHeight = 30;
+    world->generator.waterLevel = 75;
+    world->generator.groundLevel = 80;
+    world->generator.noise2d = fnlCreateState();
+    world->generator.hillNoise = fnlCreateState();
+
+    world->generator.hillNoise.noise_type = FNL_NOISE_OPENSIMPLEX2S;
+    world->generator.hillNoise.seed = RandomUI32(0, 123123U);
+    
+    world->generator.noise2d.noise_type = FNL_NOISE_OPENSIMPLEX2S;
+    world->generator.noise2d.octaves = 4;
+    world->generator.noise2d.gain = 4;
+    world->generator.noise2d.seed = RandomUI32(0, 123123U);
+    world->generator.noise2d.lacunarity = 4.0;
+
+    world->generator.noise3d = fnlCreateState();
+    world->generator.noise3d.seed = RandomUI32(0, 123123U);
+    world->generator.noise3d.noise_type=FNL_NOISE_OPENSIMPLEX2S;
 
     // Texture table
     ui16 texSize = CHUNK_TEX_SQUARE_SIZE;
@@ -295,32 +367,13 @@ InitWorld(MemoryArena *arena, World *world)
 
     // ORDER IS IMPORTANT!!!
 
-    GenerateWorld(world);
     // Allocate meshes
     for(ui32 y = 0; y < world->yChunks; y++)
     for(ui32 x = 0; x < world->xChunks; x++)
     {
-        ChunkMesh *mesh = GetChunkMesh(world, x, y);
-        AllocateChunkMesh(arena, mesh);
-    }
-
-    // Calculate neighbourhood info 
-    for(ui32 y = 0; y < world->yChunks; y++)
-    for(ui32 x = 0; x < world->xChunks; x++)
-    {
-        Chunk *chunk = GetChunk(world, x, y);
-        ChunkMesh *mesh = GetChunkMesh(world, x, y);
-        UpdateChunkNeighbourInfoSlow(world, mesh, chunk);
-    }
-    
-    // Update mesh and buffer data
-    for(ui32 y = 0; y < world->yChunks; y++)
-    for(ui32 x = 0; x < world->xChunks; x++)
-    {
-        Chunk *chunk = GetChunk(world, x, y);
-        ChunkMesh *mesh = GetChunkMesh(world, x, y);
-        UpdateChunkMesh(world, mesh, chunk);
-        BufferChunkMesh(mesh);
+        Chunk *chunk = world->chunkArray+x+y*world->xChunks;
+        chunk->mesh = PushStruct(arena, ChunkMesh);
+        AllocateChunkMesh(arena, chunk->mesh);
     }
 }
 

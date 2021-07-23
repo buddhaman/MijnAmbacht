@@ -33,6 +33,7 @@ Big ideas:
     - Instanced billboard rendering.
     - Bushes: instanced billboards but static if far. Replace with dynamic if close. 
     - Move trees/bush/grass with shader. Like wind.
+    - Dynamic voxels with instancing.
 
 **HUGE IDEAS:**
     - Accurate fluid dynamics to simulate wind/explosions.

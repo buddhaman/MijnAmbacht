@@ -155,8 +155,8 @@ AllocateChunkMesh(MemoryArena *arena, ChunkMesh *mesh)
     mesh->stride = 9;
 
     ui32 zdims = CHUNK_ZDIMS;
-    mesh->maxVertices = 32U*24U*zdims;
-    mesh->maxIndices = 32U*36U*zdims;
+    mesh->maxVertices = 64U*24U*zdims;
+    mesh->maxIndices = 64U*32U*zdims;
     mesh->vertexBuffer = PushArray(arena, ui16, ((size_t)mesh->maxVertices)*((size_t)mesh->stride));
     mesh->indexBuffer = PushArray(arena, ui32, mesh->maxIndices);
 

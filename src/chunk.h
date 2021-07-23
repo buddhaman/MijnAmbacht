@@ -40,21 +40,25 @@ struct ChunkMesh
     ui32 *indexBuffer;
     ui32 nIndices;
     ui32 maxIndices;
-
-    ui8 neighbourInfo[CHUNK_XDIMS][CHUNK_YDIMS][CHUNK_ZDIMS];
 };
 
 #define ChunkIterI16(xIter, yIter, zIter) \
-    for(ui16 xIter = 0; xIter < CHUNK_XDIMS; xIter++)\
-    for(ui16 yIter = 0; yIter < CHUNK_YDIMS; yIter++)\
-    for(ui16 zIter = 0; zIter < CHUNK_ZDIMS; zIter++)
+    for(i16 xIter = 0; xIter < CHUNK_XDIMS; xIter++)\
+    for(i16 yIter = 0; yIter < CHUNK_YDIMS; yIter++)\
+    for(i16 zIter = 0; zIter < CHUNK_ZDIMS; zIter++)
 
 struct Chunk 
 {
-    i16 xIndex;
-    i16 yIndex;
+    int xIndex;
+    int yIndex;
     int z;
+    b32 isLoaded;
+    b32 isActive;
     ui16 blocks[CHUNK_XDIMS][CHUNK_YDIMS][CHUNK_ZDIMS];
+
+    // transient
+    ui8 neighbourInfo[CHUNK_XDIMS][CHUNK_YDIMS][CHUNK_ZDIMS];
+    ChunkMesh *mesh;
 };
 
 

@@ -33,6 +33,7 @@ RegisterKeyAction(AppState *appState, KeyAction action, b32 down)
 void
 ResetKeyActions(AppState *appState)
 {
+    appState->dx = appState->dy = 0;
     appState->mouseScrollY = 0;
     memcpy(appState->wasActionDown, appState->isActionDown, sizeof(appState->isActionDown));
 }

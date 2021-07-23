@@ -1,8 +1,6 @@
 
 typedef struct World World;
-
-#define GetChunk(world, x, y) &world->chunks[(x)+(y)*world->xChunks]
-#define GetChunkMesh(world, x, y) &world->chunkMeshes[(x)+(y)*world->xChunks]
+typedef struct WorldGenerator WorldGenerator;
 
 typedef enum
 {
@@ -13,17 +11,36 @@ typedef enum
     BLOCK_STONE = 4,
 } BlockType;
 
+struct WorldGenerator 
+{
+    r32 firstSmoothness;
+    r32 roughness2;
+    r32 roughness3;
+    r32 hillRoughness;
+    r32 hillHeight;
+    int waterLevel;
+    int groundLevel;
+    fnl_state noise2d;
+    fnl_state hillNoise;
+    fnl_state noise3d;
+};
+
 struct World
 {
     MemoryArena *arena;
-    ui32 xChunks;
-    ui32 yChunks;
-    Chunk *chunks;
-    ChunkMesh *chunkMeshes;
+    int xChunks;
+    int yChunks;
+    int nChunks;
+    int activeChunkX;
+    int activeChunkY;
+    Chunk *chunkArray;
+    Chunk **chunks;
+    WorldGenerator generator;
 
     ui16 textureTableUTop[8];
     ui16 textureTableVTop[8];
     ui16 textureTableU[8];
     ui16 textureTableV[8];
 };
+
 
