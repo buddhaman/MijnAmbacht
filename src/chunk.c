@@ -14,27 +14,31 @@ iv3_add(IVec3 a, IVec3 b)
 internal inline void
 PushIndexToChunkMesh(ChunkMesh *mesh, ui32 index)
 {
-    Assert(mesh->nIndices < mesh->maxIndices);
-    mesh->indexBuffer[mesh->nIndices++] = index;
+    //Assert(mesh->nIndices < mesh->maxIndices);
+    if(mesh->nIndices < mesh->maxIndices)
+    {
+        mesh->indexBuffer[mesh->nIndices++] = index;
+    }
 }
 
 internal inline void
 PushColoredVertexToChunkMesh(ChunkMesh *mesh, IVec3 p, i16 xn, i16 yn, i16 zn, 
         ui16 u, ui16 v, ui32 color)
 {
-    Assert(mesh->nVertices < mesh->maxVertices);
-    ui32 idx = mesh->nVertices*mesh->stride;
-    mesh->vertexBuffer[idx] = p.x;
-    mesh->vertexBuffer[idx+1] = p.y;
-    mesh->vertexBuffer[idx+2] = p.z;
-    mesh->vertexBuffer[idx+3] = xn+CHUNK_UNIT;
-    mesh->vertexBuffer[idx+4] = yn+CHUNK_UNIT;
-    mesh->vertexBuffer[idx+5] = zn+CHUNK_UNIT;
-    mesh->vertexBuffer[idx+6] = (v<<8)+u;
-    //mesh->vertexBuffer[idx+7] = (color << 16) & (0xffff);
-    //mesh->vertexBuffer[idx+8] = (color) & (0xffff);
-    *((ui32 *)&mesh->vertexBuffer[idx+7]) = color;      // 7 and 8
-    mesh->nVertices++;
+    //Assert(mesh->nVertices < mesh->maxVertices);
+    if(mesh->nVertices < mesh->maxVertices)
+    {
+        ui32 idx = mesh->nVertices*mesh->stride;
+        mesh->vertexBuffer[idx] = p.x;
+        mesh->vertexBuffer[idx+1] = p.y;
+        mesh->vertexBuffer[idx+2] = p.z;
+        mesh->vertexBuffer[idx+3] = xn+CHUNK_UNIT;
+        mesh->vertexBuffer[idx+4] = yn+CHUNK_UNIT;
+        mesh->vertexBuffer[idx+5] = zn+CHUNK_UNIT;
+        mesh->vertexBuffer[idx+6] = (v<<8)+u;
+        *((ui32 *)&mesh->vertexBuffer[idx+7]) = color;      // 7 and 8
+        mesh->nVertices++;
+    }
 }
 
 internal inline void

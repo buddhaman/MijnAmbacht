@@ -8,6 +8,7 @@
 typedef struct IVec3 IVec3;
 typedef struct ChunkMesh ChunkMesh;
 typedef struct Chunk Chunk;
+typedef struct ChunkData ChunkData;
 
 typedef enum
 {
@@ -47,18 +48,28 @@ struct ChunkMesh
     for(i16 yIter = 0; yIter < CHUNK_YDIMS; yIter++)\
     for(i16 zIter = 0; zIter < CHUNK_ZDIMS; zIter++)
 
+struct ChunkData
+{
+    b32 isLoaded;
+    b32 isUsed;
+
+    // transient
+    ChunkMesh *mesh;
+
+    ui16 blocks[CHUNK_XDIMS][CHUNK_YDIMS][CHUNK_ZDIMS];
+
+    // transient
+    ui8 neighbourInfo[CHUNK_XDIMS][CHUNK_YDIMS][CHUNK_ZDIMS];
+};
+
 struct Chunk 
 {
     int xIndex;
     int yIndex;
     int z;
-    b32 isLoaded;
     b32 isActive;
-    ui16 blocks[CHUNK_XDIMS][CHUNK_YDIMS][CHUNK_ZDIMS];
-
-    // transient
-    ui8 neighbourInfo[CHUNK_XDIMS][CHUNK_YDIMS][CHUNK_ZDIMS];
-    ChunkMesh *mesh;
+    b32 inWorld;
+    ChunkData *data;
 };
 
 

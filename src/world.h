@@ -28,13 +28,17 @@ struct WorldGenerator
 struct World
 {
     MemoryArena *arena;
-    int xChunks;
-    int yChunks;
-    int nChunks;
-    int activeChunkX;
-    int activeChunkY;
-    Chunk *chunkArray;
-    Chunk **chunks;
+
+    int nChunksInWorld;
+    int maxChunksInWorld;
+    Chunk **chunksInWorld;
+
+    ui32 chunkMapSize;
+    Chunk *chunkMap;
+
+    int maxChunkData;
+    ChunkData *chunkData;
+
     WorldGenerator generator;
 
     ui16 textureTableUTop[8];

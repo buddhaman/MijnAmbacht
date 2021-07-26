@@ -180,7 +180,7 @@ main(int argc, char**argv)
 
     Camera *camera = PushStruct(gameArena, Camera);
     InitCamera(camera);
-    camera->pos = vec3(50, 50, 90);
+    camera->pos = vec3(0, 0, 90);
 
     World *world = PushStruct(gameArena, World);
     InitWorld(gameArena, world);
@@ -321,69 +321,86 @@ main(int argc, char**argv)
         glBindTexture(GL_TEXTURE_2D, spriteSheetHandle);
 
         Vec3 playerPos = camera->pos;
-#if 1
-        r32 viewSize = CHUNK_XDIMS*world->xChunks/2.0;
-        Int16Vec playerChunkIndices = GetChunkIndicesAtPosition(vec2(playerPos.x-viewSize, playerPos.y-viewSize));
-        int newActiveX  = playerChunkIndices.x;
-        int newActiveY = playerChunkIndices.y;
-        if(newActiveX != world->activeChunkX || newActiveY!=world->activeChunkY)
+        int viewRadiusChunkSize = 1;
+        r32 viewRadius = CHUNK_XDIMS*viewRadiusChunkSize;
+        (void)viewRadius;
+        Int16Vec playerChunkIndices = GetChunkIndicesAtPosition(vec2(playerPos.x, playerPos.y));
+        int minXChunk = playerChunkIndices.x-viewRadiusChunkSize;
+        int minYChunk = playerChunkIndices.y-viewRadiusChunkSize;
+        int maxXChunk = playerChunkIndices.x+viewRadiusChunkSize;
+        int maxYChunk = playerChunkIndices.y+viewRadiusChunkSize;
+        // Remove all out of range. Add all in range;
+        for(int chunkIdx = 0; 
+                chunkIdx < world->nChunksInWorld;
+                chunkIdx++)
         {
-            // Just reload everything
-            for(int i = 0; i < world->nChunks; i++)
+            Chunk *chunk = world->chunksInWorld[chunkIdx];
+            if(chunk->xIndex < minXChunk || chunk->xIndex > maxXChunk ||
+                chunk->yIndex < minYChunk || chunk->yIndex > maxYChunk)
             {
-                Chunk *chunk = world->chunks[i];
-                if(chunk)
-                {
-                    ChunkMesh *mesh = chunk->mesh;
-                    memset(chunk, 0, sizeof(Chunk));
-                    chunk->mesh = mesh;
-                }
-                world->chunks[i] = NULL;
+                chunk->inWorld = 0;
+                ChunkMesh *mesh = chunk->data->mesh;
+                memset(chunk->data, 0, sizeof(ChunkData));
+                chunk->data->mesh = mesh;
+                chunk->data = NULL;
+                world->chunksInWorld[chunkIdx] = world->chunksInWorld[world->nChunksInWorld-1];
+                world->nChunksInWorld--;
             }
         }
-        world->activeChunkX = newActiveX;
-        world->activeChunkY = newActiveY;
-#endif
-        //DebugOut("%d %d", world->activeChunkX, world->activeChunkY);
-        for(int y = world->activeChunkY; y < world->yChunks+world->activeChunkY; y++)
-        for(int x = world->activeChunkX; x < world->xChunks+world->activeChunkX; x++)
+        DebugOut("active chunks = %d", world->nChunksInWorld);
+        DebugOut("player chunk(%d %d) pos(%.2f %.2f)", playerChunkIndices.x, playerChunkIndices.y,
+                playerPos.x, playerPos.y);
+        for(int x = minXChunk; x <= maxXChunk; x++)
+        for(int y = minYChunk; y <= maxYChunk; y++)
         {
-            // Weird, but is for loading.
-            GetChunkSlow(world, x, y);
-        }
-        for(int y = world->activeChunkY; y < world->yChunks+world->activeChunkY; y++)
-        for(int x = world->activeChunkX; x < world->xChunks+world->activeChunkX; x++)
-        {
-            Chunk *chunk = GetChunkSlow(world, x, y);
-            
-            if(chunk && !chunk->isLoaded)
+            if(world->nChunksInWorld < world->maxChunksInWorld)
             {
-                DebugOut("Loading chunk neighbour info %d %d", x, y);
+                Chunk *newChunk = GetChunkHashSlot(world, x, y);
+                if(!newChunk->inWorld)
+                {
+                    world->chunksInWorld[world->nChunksInWorld++] = GetChunkSlow(world, x, y);
+                }
+            }
+        }
+        printf("chunks: ");
+
+        for(int chunkIdx = 0; 
+                chunkIdx < world->nChunksInWorld;
+                chunkIdx++)
+        {
+            Chunk *chunk = world->chunksInWorld[chunkIdx];
+            printf("(%d %d) ", chunk->xIndex, chunk->yIndex);
+            Assert(chunk);
+            if(!chunk->data->isLoaded)
+            {
+                DebugOut("Loading chunk neighbour info %d %d", chunk->xIndex, chunk->yIndex);
                 UpdateChunkNeighbourInfoSlow(world, chunk);
             }
         }
-        for(int y = world->activeChunkY; y < world->yChunks+world->activeChunkY; y++)
-        for(int x = world->activeChunkX; x < world->xChunks+world->activeChunkX; x++)
+        printf("\n");
+        for(int chunkIdx = 0; 
+                chunkIdx < world->nChunksInWorld;
+                chunkIdx++)
         {
-            Chunk *chunk = GetChunkSlow(world, x, y);
+            Chunk *chunk = world->chunksInWorld[chunkIdx];
             
-            if(chunk && !chunk->isLoaded)
+            if(!chunk->data->isLoaded)
             {
+                DebugOut("Loading chunk mesh data for: (%d %d) %d %d", chunk->xIndex, chunk->yIndex,
+                        chunk->data->mesh->maxIndices, chunk->data->mesh->maxVertices);
                 UpdateChunkMesh(world, chunk);
-                BufferChunkMesh(chunk->mesh);
-                chunk->isLoaded = 1;
+                BufferChunkMesh(chunk->data->mesh);
+                chunk->data->isLoaded = 1;
             }
         }
-        for(int y = world->activeChunkY; y < world->yChunks+world->activeChunkY; y++)
-        for(int x = world->activeChunkX; x < world->xChunks+world->activeChunkX; x++)
+        for(int chunkIdx = 0; 
+                chunkIdx < world->nChunksInWorld;
+                chunkIdx++)
         {
-            Chunk *chunk = GetChunkSlow(world, x, y);
-            if(chunk)
-            {
-                modelMatrix = m4_translation(vec3(chunk->xIndex*CHUNK_XDIMS, chunk->yIndex*CHUNK_YDIMS, 0));
-                UpdateModelMatrix(shaderInstance);
-                RenderChunkMesh(chunk->mesh);
-            }
+            Chunk *chunk = world->chunksInWorld[chunkIdx];
+            modelMatrix = m4_translation(vec3(chunk->xIndex*CHUNK_XDIMS, chunk->yIndex*CHUNK_YDIMS, 0));
+            UpdateModelMatrix(shaderInstance);
+            RenderChunkMesh(chunk->data->mesh);
         }
 
         // Render UI

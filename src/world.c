@@ -13,7 +13,6 @@ GetChunkIndicesAtPosition(Vec2 pos)
 internal inline void
 GenerateChunk(World *world, Chunk *chunk)
 {
-    memset(chunk->blocks, 0, sizeof(chunk->blocks));
     r32 roughness2 = world->generator.roughness2;
     r32 roughness3 = world->generator.roughness3;
     r32 hillRoughness = world->generator.hillRoughness;
@@ -39,71 +38,110 @@ GenerateChunk(World *world, Chunk *chunk)
             if(bz > world->generator.waterLevel-2 &&
                     height < world->generator.waterLevel+2)
             {
-                chunk->blocks[bx][by][bz] = BLOCK_SAND;
+                chunk->data->blocks[bx][by][bz] = BLOCK_SAND;
             }
             else if(bz > world->generator.waterLevel-15)
             {
-                chunk->blocks[bx][by][bz] = BLOCK_DIRT;
+                chunk->data->blocks[bx][by][bz] = BLOCK_DIRT;
             }
             else
             {
-                chunk->blocks[bx][by][bz] = BLOCK_STONE;
+                chunk->data->blocks[bx][by][bz] = BLOCK_STONE;
             }
         }
         for(ui16 bz = height; bz < world->generator.waterLevel; bz++)
         {
-            chunk->blocks[bx][by][bz] = BLOCK_WATER;
+            chunk->data->blocks[bx][by][bz] = BLOCK_WATER;
         }
         for(ui16 bz = 0; bz < height; bz++)
         {
             r32 heightFactor = ((r32)bz)/height;
             r32 noise3Value = fnlGetNoise3D(&world->generator.noise3d, x*roughness3/4, y*roughness3/4, bz*roughness3);
-            if((1.0-heightFactor*heightFactor*heightFactor)*noise3Value < -0.4 && chunk->blocks[bx][by][bz]!=BLOCK_WATER)
+            if((1.0-heightFactor*heightFactor*heightFactor)*noise3Value < -0.4 && chunk->data->blocks[bx][by][bz]!=BLOCK_WATER)
             {
-                chunk->blocks[bx][by][bz] = 0;
+                chunk->data->blocks[bx][by][bz] = 0;
             }
         }
     }
 
 }
 
+internal inline ui32
+GetPositionHash(int x, int y)
+{
+    ui32 xHash = x < 0 ? -5*x : 7*x;
+    ui32 yHash = y < 0 ? -11*y : 13*y;
+    return xHash+yHash;
+}
+
+internal inline Chunk *
+GetChunkHashSlot(World *world, int x, int y)
+{
+    ui32 hash = GetPositionHash(x, y);
+    ui32 mask = world->chunkMapSize-1;
+    ui32 hashMapStartIdx = hash & world->chunkMapSize;
+    Chunk *chunk = NULL;
+    for(ui32 counter = 0;
+            counter < world->chunkMapSize; 
+            counter++)
+    {
+        ui32 chunkIdx = (counter+hashMapStartIdx) & mask;
+        Chunk *tryChunk = world->chunkMap + chunkIdx;
+        if(tryChunk->isActive)
+        {
+            if(tryChunk->xIndex == x && tryChunk->yIndex==y)
+            {
+                chunk = tryChunk;
+                break;
+            }
+        }
+        else
+        {
+            chunk = tryChunk;
+            break;
+        }
+    }
+    Assert(chunk);
+    return chunk;
+}
+
+internal inline ChunkData *
+AllocateChunkData(World *world)
+{
+    // TODO: Do this with free list
+    for(int i = 0; i < world->maxChunkData; i++)
+    {
+        ChunkData *data = world->chunkData+i;
+        if(!data->isUsed)
+        {
+            data->isUsed = 1;
+            return data;
+        }
+    }
+    return NULL;
+}
+
 // Generates chunk if it doesnt exist.
 internal inline Chunk *
 GetChunkSlow(World *world, int x, int y)
 {
-    int xIdx = x-world->activeChunkX;
-    int yIdx = y-world->activeChunkY;
-    if(xIdx >= 0 && yIdx >= 0
-            && xIdx < world->xChunks && yIdx < world->yChunks)
+    Chunk *chunk = GetChunkHashSlot(world, x, y);
+    if(!chunk->isActive)
     {
-        Chunk *chunk = world->chunks[xIdx+yIdx*world->xChunks];
-        if(!chunk)
-        {
-            // load inactive chunk
-            for(ui32 chunkIdx = 0; 
-                    chunkIdx < world->nChunks; 
-                    chunkIdx++)
-            {
-                Chunk *newChunk = world->chunkArray + chunkIdx;
-                if(!newChunk->isActive)
-                {
-                    chunk = world->chunks[xIdx+yIdx*world->xChunks] = newChunk;
-                    chunk->xIndex = x;
-                    chunk->yIndex = y;
-                    chunk->z = 0;
-                    GenerateChunk(world, chunk);
-                    chunk->isActive = 1;
-                    DebugOut("Generated chunk %d %d", chunk->xIndex, chunk->yIndex);
-                    break;
-                }
-            }
-        }
-        return chunk;
+        chunk->xIndex = x;
+        chunk->yIndex = y;
+        chunk->z = 0;
+        chunk->isActive = 1;
     }
-    else
+    if(!chunk->inWorld)
     {
-        return NULL;
+        chunk->inWorld = 1;
+        chunk->data = AllocateChunkData(world);
+        Assert(chunk->data);
+        GenerateChunk(world, chunk);
+        DebugOut("Generated chunk %d %d", chunk->xIndex, chunk->yIndex);
     }
+    return chunk;
 }
 
 typedef struct
@@ -118,11 +156,15 @@ GetBlockPositionSlow(World *world, int x, int y, int z, BlockPosition *blockPosi
 {
     if(z < 0 || z > CHUNK_ZDIMS)
         return 0;
+    // TODO: This is still really terrible
     Int16Vec chunkIdx = GetChunkIndicesAtPosition(vec2(x, y));
-    Chunk *chunk = GetChunkSlow(world, chunkIdx.x, chunkIdx.y);
-    if(chunk)
+    Chunk *chunk = GetChunkHashSlot(world, chunkIdx.x, chunkIdx.y);
+    if(chunk->inWorld)
     {
-        *blockPosition = (BlockPosition){chunk, x-CHUNK_XDIMS*chunk->xIndex, y-CHUNK_YDIMS*chunk->yIndex, z};
+        Assert(chunk->xIndex==chunkIdx.x && chunk->yIndex==chunkIdx.y);
+        i16 bx = x-CHUNK_XDIMS*chunk->xIndex;
+        i16 by = y-CHUNK_YDIMS*chunk->yIndex;
+        *blockPosition = (BlockPosition){chunk, bx, by, z};
         return 1;
     }
     else
@@ -139,7 +181,7 @@ SetBlockNeighbourFlagSlow(World *world, int worldX, int worldY, int worldZ, Neig
     {
         Assert(bPos.x >= 0 && bPos.y >= 0 && bPos.z >= 0
                 && bPos.x < CHUNK_XDIMS && bPos.y < CHUNK_YDIMS && bPos.z < CHUNK_ZDIMS);
-        bPos.chunk->neighbourInfo[bPos.x][bPos.y][bPos.z] |= flag;
+        bPos.chunk->data->neighbourInfo[bPos.x][bPos.y][bPos.z] |= flag;
     }
 }
 
@@ -153,7 +195,7 @@ UpdateChunkNeighbourInfoSlow(World *world, Chunk *chunk)
         int xPos = chunkX+x;
         int yPos = chunkY+y;
         int zPos = z;
-        ui16 block = chunk->blocks[x][y][z];
+        ui16 block = chunk->data->blocks[x][y][z];
         if(block)
         {
             SetBlockNeighbourFlagSlow(world, xPos-1, yPos, zPos, OCCUPIED_XMAX);
@@ -170,7 +212,7 @@ global_variable fnl_state noiseX;
 void
 UpdateChunkMesh(World *world, Chunk *chunk)
 {
-    ChunkMesh *mesh = chunk->mesh;
+    ChunkMesh *mesh = chunk->data->mesh;
     mesh->nVertices = 0;
     mesh->nIndices = 0;
 
@@ -186,12 +228,12 @@ UpdateChunkMesh(World *world, Chunk *chunk)
 
     ChunkIterI16(x, y, z)
     {
-        ui16 block = chunk->blocks[x][y][z];
+        ui16 block = chunk->data->blocks[x][y][z];
         Assert(block < 5);
         IVec3 pos = ivec3(x*CHUNK_UNIT, y*CHUNK_UNIT, z*CHUNK_UNIT);
         if(block)
         {
-            ui8 neighbourInfo = chunk->neighbourInfo[x][y][z];
+            ui8 neighbourInfo = chunk->data->neighbourInfo[x][y][z];
             IVec3 p000 = pos;
             IVec3 p001 = iv3_add(pos, ivec3(0, 0, CHUNK_UNIT));
             IVec3 p010 = iv3_add(pos, ivec3(0, CHUNK_UNIT, 0));
@@ -310,13 +352,15 @@ void
 InitWorld(MemoryArena *arena, World *world)
 {
     world->arena = arena;
-    world->xChunks = 6;
-    world->yChunks = 6;
-    world->chunkArray = PushAndZeroArray(arena, Chunk, world->xChunks*world->yChunks);
-    world->chunks = PushAndZeroArray(arena, Chunk*, world->xChunks*world->yChunks);
-    world->nChunks = world->xChunks*world->yChunks;
-    world->activeChunkX = 0;
-    world->activeChunkY = 0;
+
+    world->chunkMapSize = 1024;
+    world->chunkMap = PushAndZeroArray(arena, Chunk, world->chunkMapSize);
+    world->maxChunkData = 32;
+    world->chunkData = PushAndZeroArray(arena, ChunkData, world->maxChunkData);
+
+    world->nChunksInWorld = 0;
+    world->maxChunksInWorld = 20;
+    world->chunksInWorld = PushAndZeroArray(arena, Chunk*, world->maxChunksInWorld);
 
     // Init generator
     world->generator.firstSmoothness = 2;
@@ -368,12 +412,13 @@ InitWorld(MemoryArena *arena, World *world)
     // ORDER IS IMPORTANT!!!
 
     // Allocate meshes
-    for(ui32 y = 0; y < world->yChunks; y++)
-    for(ui32 x = 0; x < world->xChunks; x++)
+    for(int chunkDataIdx = 0;
+            chunkDataIdx < world->maxChunkData;
+            chunkDataIdx++)
     {
-        Chunk *chunk = world->chunkArray+x+y*world->xChunks;
-        chunk->mesh = PushStruct(arena, ChunkMesh);
-        AllocateChunkMesh(arena, chunk->mesh);
+        ChunkData *chunkData = world->chunkData+chunkDataIdx;
+        chunkData->mesh = PushStruct(arena, ChunkMesh);
+        AllocateChunkMesh(arena, chunkData->mesh);
     }
 }
 
